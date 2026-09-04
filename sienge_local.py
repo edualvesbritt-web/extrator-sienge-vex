@@ -626,7 +626,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div class="navgroup-label">Ferramentas</div>
       <button class="navitem" id="nav-historico" onclick="showView('historico')">Histórico</button>
       <button class="navitem" id="nav-anexo" onclick="showView('anexo')">Anexar avulso</button>
-      <button class="navitem" id="nav-cfg" onclick="showView('cfg')">Configuração</button>
+      <button class="navitem" id="nav-cfg" onclick="showView('cfg')" style="display:none;">Configuração</button>
       <button class="navitem" id="nav-admin" onclick="showView('admin')" style="display:none;">Administração</button>
     </nav>
     <button class="navitem" id="logoutBtn" onclick="doLogout()" style="display:none;margin-top:auto;border-top:1px solid rgba(255,255,255,.12);border-radius:0;padding-top:14px;">Sair</button>
@@ -1372,6 +1372,7 @@ async function checkMe(){
     }
     if(me.isAdmin){
       document.getElementById('nav-admin').style.display = 'block';
+      document.getElementById('nav-cfg').style.display = 'block';
       renderUsersList();
     }
   }catch(e){ /* segue sem admin */ }
@@ -1483,7 +1484,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def _route_get(self, path, query):
         if path == '/api/config':
-            self._send_json(200, get_config())
+            cfg = get_config()
+            user = self._current_user()
+            if not (user and user.get('isAdmin')):
+                cfg = dict(cfg)
+                cfg['pass'] = ''
+                cfg['user'] = ''
+                cfg['anthropicApiKey'] = ''
+            self._send_json(200, cfg)
         elif path == '/api/creditor-map':
             self._send_json(200, get_creditor_map())
         elif path == '/api/doctype-map':
@@ -1581,6 +1589,10 @@ class Handler(BaseHTTPRequestHandler):
             save_users(users)
             self._send_json(200, {'ok': True})
         elif path == '/api/config':
+            user = self._current_user()
+            if not (user and user.get('isAdmin')):
+                self._send_json(403, {'error': 'Só administradores podem alterar a configuração.'})
+                return
             save_json_file(CONFIG_FILE, body)
             self._send_json(200, {'ok': True})
         elif path == '/api/creditor-map':
