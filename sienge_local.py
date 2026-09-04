@@ -360,24 +360,45 @@ HTML_PAGE = r"""<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>Extrator de Notas → Sienge (local)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Extrator de Notas → Sienge</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
   :root{
-    --paper:#F6F4EE; --panel:#FFFFFF; --ink:#1B2A4A; --ink-soft:#4A5A78;
-    --line:#C9D2DE; --blue:#2F5D8A; --blue-dim:#EAF0F6; --copper:#B5651D;
-    --copper-dim:#F3E4D3; --green:#3F7D53; --green-dim:#E4EFE7; --red:#B23A3A; --red-dim:#F6E4E4;
+    --paper:#FAF8F3; --panel:#FFFFFF; --ink:#18160F; --ink-soft:#6B6558;
+    --line:#E7E2D5; --blue:#2E5C86; --blue-dim:#EAF1F7; --copper:#F2A400;
+    --copper-dim:#FCEACB; --green:#3F7D53; --green-dim:#E4EFE7; --red:#B23A3A; --red-dim:#F6E4E4;
+    --sidebar-w:230px;
   }
   *{box-sizing:border-box;}
-  body{margin:0;background:var(--paper);font-family:'IBM Plex Sans',sans-serif;color:var(--ink);padding:32px 20px 80px;}
-  .wrap{max-width:820px;margin:0 auto;}
-  h1{font-family:'Space Grotesk',sans-serif;font-size:26px;margin:0 0 4px;}
-  .sub{color:var(--ink-soft);font-size:13.5px;margin:0 0 24px;}
-  .badge{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:11px;background:var(--green-dim);color:var(--green);border:1px solid var(--green);padding:2px 8px;border-radius:2px;margin-bottom:16px;}
-  .panel{background:var(--panel);border:1px solid var(--line);border-radius:3px;margin-bottom:20px;}
-  .panel-head{padding:12px 16px;font-weight:600;font-size:14px;border-bottom:1px solid var(--line);cursor:pointer;display:flex;justify-content:space-between;}
-  .panel-body{padding:16px;display:none;}
-  .panel-body.open{display:block;}
+  body{margin:0;background:var(--paper);font-family:'IBM Plex Sans',sans-serif;color:var(--ink);}
+  .app{display:flex;min-height:100vh;}
+
+  .sidebar{
+    width:var(--sidebar-w);flex:0 0 var(--sidebar-w);background:var(--ink);color:#EDEAE1;
+    display:flex;flex-direction:column;padding:20px 14px;position:sticky;top:0;height:100vh;overflow-y:auto;
+  }
+  .brand{display:flex;align-items:center;gap:10px;padding:4px 6px 18px;margin-bottom:10px;border-bottom:1px solid rgba(255,255,255,.12);}
+  .brand svg{width:30px;height:26px;flex:0 0 auto;}
+  .brand .word{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:15px;line-height:1.15;color:#fff;}
+  .brand .word small{display:block;font-family:'IBM Plex Mono',monospace;font-weight:400;font-size:10px;letter-spacing:.03em;color:#B8B2A2;}
+
+  nav{display:flex;flex-direction:column;gap:2px;flex:1;}
+  .navgroup-label{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.06em;color:#8B8574;margin:16px 10px 4px;}
+  .navitem{
+    text-align:left;background:transparent;border:none;color:#D8D3C6;font-family:'IBM Plex Sans',sans-serif;
+    font-size:13.5px;font-weight:500;padding:9px 10px;border-radius:3px;cursor:pointer;margin:0;
+  }
+  .navitem:hover{background:rgba(255,255,255,.06);}
+  .navitem.active{background:var(--copper);color:#1A1200;font-weight:600;}
+  .sidebar-foot{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#8B8574;padding:14px 10px 4px;border-top:1px solid rgba(255,255,255,.12);margin-top:12px;}
+  .sidebar-foot .dot{color:var(--green);}
+
+  .content{flex:1;min-width:0;padding:34px 40px 100px;max-width:920px;}
+  .view h2{font-family:'Space Grotesk',sans-serif;font-size:21px;margin:0 0 4px;}
+  .view > .sub{color:var(--ink-soft);font-size:13px;margin:0 0 20px;max-width:62ch;line-height:1.5;}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:3px;margin-bottom:20px;padding:16px;}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
   .field{display:flex;flex-direction:column;gap:4px;margin-bottom:10px;}
   .field label{font-size:11.5px;color:var(--ink-soft);}
@@ -385,7 +406,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
   textarea{min-height:140px;}
   button{font-family:'IBM Plex Sans',sans-serif;font-size:13px;font-weight:600;padding:9px 16px;border-radius:2px;border:1px solid var(--ink);background:var(--ink);color:#fff;cursor:pointer;margin-right:8px;margin-top:6px;}
   button.secondary{background:var(--panel);color:var(--ink);}
-  button.copper{background:var(--copper);border-color:var(--copper);}
+  button.copper{background:var(--copper);border-color:var(--copper);color:#1A1200;}
   .msg{margin-top:10px;padding:10px 12px;border-radius:2px;font-size:12.5px;font-family:'IBM Plex Mono',monospace;white-space:pre-wrap;}
   .msg.ok{background:var(--green-dim);color:var(--green);border:1px solid var(--green);}
   .msg.bad{background:var(--red-dim);color:var(--red);border:1px solid var(--red);}
@@ -393,85 +414,55 @@ HTML_PAGE = r"""<!DOCTYPE html>
   .row{display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);font-size:12.5px;}
   .row:last-child{border-bottom:none;}
   .row .id{font-family:'IBM Plex Mono',monospace;color:var(--blue);}
+
+  .menubtn{display:none;}
+  @media (max-width: 820px){
+    .app{flex-direction:column;}
+    .sidebar{
+      width:100%;flex:0 0 auto;height:auto;position:sticky;top:0;z-index:20;
+      flex-direction:row;align-items:center;padding:12px 14px;
+    }
+    .brand{border-bottom:none;padding:0;margin:0;flex:1;}
+    nav{position:fixed;top:58px;left:0;right:0;bottom:0;background:var(--ink);flex-direction:column;
+        padding:10px 14px 30px;overflow-y:auto;display:none;}
+    nav.open{display:flex;}
+    .menubtn{display:block;background:transparent;border:1px solid #55503F;color:#EDEAE1;padding:7px 10px;}
+    .sidebar-foot{display:none;}
+    .content{padding:22px 18px 80px;}
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <span class="badge">● rodando localmente — sem passar por navegador nenhum nas chamadas ao Sienge</span>
-  <h1>Extrator de Notas → Sienge</h1>
-  <p class="sub">Cole o payload JSON de cada nota (gerado na ferramenta do Claude) e envie direto pro Sienge — ou busque credores, empresas e centros de custo.</p>
-
-  <div class="panel">
-    <div class="panel-head" onclick="toggle('cfg')">Configuração <span id="cfg-chev">▸</span></div>
-    <div class="panel-body open" id="cfg-body">
-      <div class="grid">
-        <div class="field"><label>Subdomínio (tenant)</label><input id="cSub"></div>
-        <div class="field"><label>Usuário de API</label><input id="cUser"></div>
-        <div class="field"><label>Senha de API</label><input id="cPass" type="password"></div>
-        <div class="field"><label>Endpoint de títulos</label><input id="cEndpoint"></div>
-        <div class="field"><label>Endpoint de centros de custo</label><input id="cCC"></div>
-        <div class="field"><label>Endpoint de empresas</label><input id="cComp"></div>
-        <div class="field" style="grid-column:1/-1;"><label>Chave de API da Anthropic (opcional — habilita extrair PDF aqui dentro)</label><input id="cApiKey" type="password" placeholder="sk-ant-..."></div>
-        <div class="field"><label>Código do imposto ISS (taxId)</label><input id="cIssTaxId" placeholder='ex: "ISS" (confirme — ainda não testado)'></div>
-        <div class="field"><label>Código do imposto INSS (taxId)</label><input id="cInssTaxId" placeholder='ex: "INSS" (confirme — ainda não testado)'></div>
-        <p style="grid-column:1/-1;font-size:11.5px;color:var(--ink-soft);margin:0;">IRRF (código "IR") e PIS/COFINS/CSLL (código "PIS/CSLL") já vêm fixos no programa — não precisa preencher.</p>
-      </div>
-      <button onclick="saveConfig()">Salvar configuração</button>
-      <div id="cfgMsg"></div>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <svg viewBox="0 0 120 100" xmlns="http://www.w3.org/2000/svg">
+        <path d="M8 38 L45 78 L112 8" stroke="#18160F" stroke-width="24" fill="none" stroke-linecap="square"/>
+        <rect x="36" y="0" width="32" height="32" fill="#F2A400" transform="rotate(45 52 16)"/>
+      </svg>
+      <div class="word">vex<small>extrator de notas</small></div>
     </div>
-  </div>
+    <button class="menubtn" onclick="document.getElementById('navlist').classList.toggle('open')">Menu ▾</button>
+    <nav id="navlist">
+      <button class="navitem active" id="nav-extrair" onclick="showView('extrair')">Nota → Sienge</button>
+      <div class="navgroup-label">Cadastros</div>
+      <button class="navitem" id="nav-credores" onclick="showView('credores')">Credores</button>
+      <button class="navitem" id="nav-pagadores" onclick="showView('pagadores')">Pagadores</button>
+      <button class="navitem" id="nav-doctypes" onclick="showView('doctypes')">Tipos de documento</button>
+      <div class="navgroup-label">Ferramentas</div>
+      <button class="navitem" id="nav-historico" onclick="showView('historico')">Histórico</button>
+      <button class="navitem" id="nav-anexo" onclick="showView('anexo')">Anexar avulso</button>
+      <button class="navitem" id="nav-livre" onclick="showView('livre')">Consulta livre</button>
+      <button class="navitem" id="nav-cfg" onclick="showView('cfg')">Configuração</button>
+    </nav>
+    <div class="sidebar-foot"><span class="dot">●</span> local — sem passar pelo navegador nas chamadas ao Sienge</div>
+  </aside>
 
-  <div class="panel">
-    <div class="panel-head" onclick="toggle('credores')">Credores memorizados <span id="credores-chev">▸</span></div>
-    <div class="panel-body" id="credores-body">
-      <div id="credList"></div>
-    </div>
-  </div>
+  <main class="content">
 
-  <div class="panel">
-    <div class="panel-head" onclick="toggle('pagadores')">Pagadores memorizados (apropriação) <span id="pagadores-chev">▸</span></div>
-    <div class="panel-body" id="pagadores-body">
-      <p style="font-size:12px;color:var(--ink-soft);margin-top:0;">Centro de custo, plano financeiro, unidade construtiva e item do orçamento dependem de quem está sendo pago (o Tomador da nota), não do fornecedor — já que o mesmo fornecedor pode atender obras diferentes.</p>
-      <div id="pagadorList"></div>
-    </div>
-  </div>
-
-  <div class="panel">
-    <div class="panel-head" onclick="toggle('doctypes')">Tipos de documento memorizados <span id="doctypes-chev">▸</span></div>
-    <div class="panel-body" id="doctypes-body">
-      <p style="font-size:12px;color:var(--ink-soft);margin-top:0;">Relação entre o tipo identificado no PDF (ex: "NFS-e") e o código correspondente no Sienge (ex: "NF"). Preenchida automaticamente ao clicar em "Verificar código no Sienge", ou adicione direto aqui.</p>
-      <div id="docTypeList"></div>
-      <div class="grid" style="margin-top:10px;">
-        <div class="field"><label>Tipo identificado no PDF</label><input id="dtType" placeholder="ex: NFS-e"></div>
-        <div class="field"><label>Código no Sienge</label><input id="dtCode" placeholder="ex: NF"></div>
-      </div>
-      <button onclick="adicionarTipoDoc()">Adicionar</button>
-    </div>
-  </div>
-
-  <div class="panel">
-    <div class="panel-head" onclick="toggle('livre')">Consulta livre (qualquer endpoint) <span id="livre-chev">▸</span></div>
-    <div class="panel-body" id="livre-body">
-      <p style="font-size:12px;color:var(--ink-soft);margin-top:0;">Digite o caminho depois de /v1/ — ex: <code>bills/305234/taxes</code>, <code>payment-categories?limit=200</code>. Mostra a resposta crua do Sienge.</p>
-      <div class="field"><label>Caminho + parâmetros (GET)</label><input id="freePath" placeholder="ex: bills/305234/taxes"></div>
-      <button onclick="consultaLivre()">Consultar</button>
-      <div id="livreMsg"></div>
-      <textarea id="livreOut" readonly style="min-height:220px;font-size:11.5px;margin-top:8px;"></textarea>
-    </div>
-  </div>
-
-  <div class="panel">
-    <div class="panel-head" onclick="toggle('historico')">Histórico de lançamentos <span id="historico-chev">▸</span></div>
-    <div class="panel-body" id="historico-body">
-      <p style="font-size:12px;color:var(--ink-soft);margin-top:0;">Últimos títulos lançados por aqui — usado pra sugerir campos em notas com descrição parecida, mesmo de fornecedores diferentes.</p>
-      <div id="historyList"></div>
-    </div>
-  </div>
-
-  <div class="panel">
-    <div class="panel-head" onclick="toggle('extrair')">Nota → Sienge <span id="extrair-chev">▾</span></div>
-    <div class="panel-body open" id="extrair-body">
-      <p style="font-size:12px;color:var(--ink-soft);margin-top:0;">Precisa da chave de API preenchida na Configuração. Escolha um ou vários PDFs, extraia, confira/complete os campos, e clique em enviar — cria o título e anexa o mesmo PDF automaticamente. Selecionando vários, o programa processa um de cada vez e já carrega o próximo depois de cada envio.</p>
+    <section class="view" id="view-extrair">
+      <h2>Nota → Sienge</h2>
+      <p class="sub">Escolha um ou vários PDFs, extraia, confira/complete os campos, e clique em enviar — cria o título e anexa o mesmo PDF automaticamente. Selecionando vários, o programa processa um de cada vez e já carrega o próximo depois de cada envio. Precisa da chave de API preenchida em Configuração.</p>
       <div class="field"><label>Arquivo(s) PDF</label><input id="xFile" type="file" accept="application/pdf" multiple onchange="prepararFila()"></div>
       <div id="filaMsg"></div>
       <button onclick="extrairPdf()">Extrair dados</button>
@@ -555,27 +546,95 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <button class="copper" onclick="enviarTitulo()" style="margin-top:10px;">Enviar para o Sienge (e anexar o PDF)</button>
         <div id="envioMsg"></div>
       </div>
-    </div>
-  </div>
+    </section>
 
-  <div class="panel">
-    <div class="panel-head" onclick="toggle('anexo')">Anexar PDF a um título já existente <span id="anexo-chev">▸</span></div>
-    <div class="panel-body" id="anexo-body">
-      <p style="font-size:12px;color:var(--ink-soft);margin-top:0;">Use isso só se precisar anexar um arquivo depois, num título que já foi criado antes (o fluxo normal acima já anexa sozinho).</p>
-      <div class="field"><label>ID do título (billId)</label><input id="aBillId2" placeholder="ex: 4521"></div>
-      <div class="field"><label>Descrição do anexo</label><input id="aDesc2" placeholder="ex: NFS-e 1060 + boleto"></div>
-      <div class="field"><label>Arquivo PDF</label><input id="aFile2" type="file" accept="application/pdf"></div>
-      <button class="secondary" onclick="anexarPdfAvulso()">Enviar anexo</button>
-      <div id="anexoMsg2"></div>
-    </div>
-  </div>
+    <section class="view" id="view-credores" style="display:none;">
+      <h2>Credores memorizados</h2>
+      <p class="sub">Relação entre o CNPJ do fornecedor e o credor correspondente no Sienge.</p>
+      <div class="panel"><div id="credList"></div></div>
+    </section>
+
+    <section class="view" id="view-pagadores" style="display:none;">
+      <h2>Pagadores memorizados</h2>
+      <p class="sub">Centro de custo, plano financeiro, unidade construtiva e item do orçamento dependem de quem está sendo pago (o Tomador da nota), não do fornecedor — já que o mesmo fornecedor pode atender obras diferentes.</p>
+      <div class="panel"><div id="pagadorList"></div></div>
+    </section>
+
+    <section class="view" id="view-doctypes" style="display:none;">
+      <h2>Tipos de documento memorizados</h2>
+      <p class="sub">Relação entre o tipo identificado no PDF (ex: "NFS-e") e o código correspondente no Sienge (ex: "NF"). Preenchida automaticamente ao clicar em "Verificar código no Sienge", ou adicione direto aqui.</p>
+      <div class="panel">
+        <div id="docTypeList"></div>
+        <div class="grid" style="margin-top:10px;">
+          <div class="field"><label>Tipo identificado no PDF</label><input id="dtType" placeholder="ex: NFS-e"></div>
+          <div class="field"><label>Código no Sienge</label><input id="dtCode" placeholder="ex: NF"></div>
+        </div>
+        <button onclick="adicionarTipoDoc()">Adicionar</button>
+      </div>
+    </section>
+
+    <section class="view" id="view-historico" style="display:none;">
+      <h2>Histórico de lançamentos</h2>
+      <p class="sub">Últimos títulos lançados por aqui — usado pra sugerir campos em notas com descrição parecida, mesmo de fornecedores diferentes.</p>
+      <div class="panel"><div id="historyList"></div></div>
+    </section>
+
+    <section class="view" id="view-livre" style="display:none;">
+      <h2>Consulta livre</h2>
+      <p class="sub">Digite o caminho depois de /v1/ — ex: <code>bills/305234/taxes</code>, <code>payment-categories?limit=200</code>. Mostra a resposta crua do Sienge.</p>
+      <div class="panel">
+        <div class="field"><label>Caminho + parâmetros (GET)</label><input id="freePath" placeholder="ex: bills/305234/taxes"></div>
+        <button onclick="consultaLivre()">Consultar</button>
+        <div id="livreMsg"></div>
+        <textarea id="livreOut" readonly style="min-height:220px;font-size:11.5px;margin-top:8px;"></textarea>
+      </div>
+    </section>
+
+    <section class="view" id="view-cfg" style="display:none;">
+      <h2>Configuração</h2>
+      <p class="sub">Credenciais e endpoints do Sienge, chave de IA e códigos de imposto.</p>
+      <div class="panel">
+        <div class="grid">
+          <div class="field"><label>Subdomínio (tenant)</label><input id="cSub"></div>
+          <div class="field"><label>Usuário de API</label><input id="cUser"></div>
+          <div class="field"><label>Senha de API</label><input id="cPass" type="password"></div>
+          <div class="field"><label>Endpoint de títulos</label><input id="cEndpoint"></div>
+          <div class="field"><label>Endpoint de centros de custo</label><input id="cCC"></div>
+          <div class="field"><label>Endpoint de empresas</label><input id="cComp"></div>
+          <div class="field" style="grid-column:1/-1;"><label>Chave de API da Anthropic (opcional — habilita extrair PDF aqui dentro)</label><input id="cApiKey" type="password" placeholder="sk-ant-..."></div>
+          <div class="field"><label>Código do imposto ISS (taxId)</label><input id="cIssTaxId" placeholder='ex: "ISS" (confirme — ainda não testado)'></div>
+          <div class="field"><label>Código do imposto INSS (taxId)</label><input id="cInssTaxId" placeholder='ex: "INSS" (confirme — ainda não testado)'></div>
+          <p style="grid-column:1/-1;font-size:11.5px;color:var(--ink-soft);margin:0;">IRRF (código "IR") e PIS/COFINS/CSLL (código "PIS/CSLL") já vêm fixos no programa — não precisa preencher.</p>
+        </div>
+        <button onclick="saveConfig()">Salvar configuração</button>
+        <div id="cfgMsg"></div>
+      </div>
+    </section>
+
+    <section class="view" id="view-anexo" style="display:none;">
+      <h2>Anexar PDF a um título já existente</h2>
+      <p class="sub">Use isso só se precisar anexar um arquivo depois, num título que já foi criado antes (o fluxo normal de "Nota → Sienge" já anexa sozinho).</p>
+      <div class="panel">
+      <div class="panel">
+        <div class="field"><label>ID do título (billId)</label><input id="aBillId2" placeholder="ex: 4521"></div>
+        <div class="field"><label>Descrição do anexo</label><input id="aDesc2" placeholder="ex: NFS-e 1060 + boleto"></div>
+        <div class="field"><label>Arquivo PDF</label><input id="aFile2" type="file" accept="application/pdf"></div>
+        <button class="secondary" onclick="anexarPdfAvulso()">Enviar anexo</button>
+        <div id="anexoMsg2"></div>
+      </div>
+    </section>
+
+  </main>
 </div>
 
 <script>
-function toggle(id){
-  document.getElementById(id+'-body').classList.toggle('open');
-  const chev = document.getElementById(id+'-chev');
-  chev.textContent = document.getElementById(id+'-body').classList.contains('open') ? '▾' : '▸';
+function showView(name){
+  document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
+  document.getElementById('view-' + name).style.display = 'block';
+  document.querySelectorAll('.navitem').forEach(b => b.classList.remove('active'));
+  document.getElementById('nav-' + name).classList.add('active');
+  const nl = document.getElementById('navlist');
+  if(nl.classList.contains('open')) nl.classList.remove('open');
 }
 function mostrarAba(nome){
   const abas = { dados: 'abaDados', impostos: 'abaImpostos' };
