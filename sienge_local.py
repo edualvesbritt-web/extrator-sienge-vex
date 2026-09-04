@@ -363,7 +363,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Extrator de Notas → Sienge</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
   :root{
     --paper:#FAF8F3; --panel:#FFFFFF; --ink:#18160F; --ink-soft:#6B6558;
     --line:#E7E2D5; --blue:#2E5C86; --blue-dim:#EAF1F7; --copper:#F2A400;
@@ -371,7 +371,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     --sidebar-w:230px;
   }
   *{box-sizing:border-box;}
-  body{margin:0;background:var(--paper);font-family:'IBM Plex Sans',sans-serif;color:var(--ink);}
+  body{margin:0;background:var(--paper);font-family:'Barlow',sans-serif;color:var(--ink);}
   .app{display:flex;min-height:100vh;}
 
   .sidebar{
@@ -380,40 +380,40 @@ HTML_PAGE = r"""<!DOCTYPE html>
   }
   .brand{display:flex;align-items:center;gap:10px;padding:4px 6px 18px;margin-bottom:10px;border-bottom:1px solid rgba(255,255,255,.12);}
   .brand svg{width:30px;height:26px;flex:0 0 auto;}
-  .brand .word{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:15px;line-height:1.15;color:#fff;}
-  .brand .word small{display:block;font-family:'IBM Plex Mono',monospace;font-weight:400;font-size:10px;letter-spacing:.03em;color:#B8B2A2;}
+  .brand .word{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;letter-spacing:.01em;line-height:1.1;color:#fff;text-transform:uppercase;}
+  .brand .word small{display:block;font-family:'JetBrains Mono',monospace;font-weight:400;font-size:10px;letter-spacing:.03em;color:#B8B2A2;}
 
   nav{display:flex;flex-direction:column;gap:2px;flex:1;}
-  .navgroup-label{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.06em;color:#8B8574;margin:16px 10px 4px;}
+  .navgroup-label{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.06em;color:#8B8574;margin:16px 10px 4px;}
   .navitem{
-    text-align:left;background:transparent;border:none;color:#D8D3C6;font-family:'IBM Plex Sans',sans-serif;
+    text-align:left;background:transparent;border:none;color:#D8D3C6;font-family:'Barlow',sans-serif;
     font-size:13.5px;font-weight:500;padding:9px 10px;border-radius:3px;cursor:pointer;margin:0;
   }
   .navitem:hover{background:rgba(255,255,255,.06);}
   .navitem.active{background:var(--copper);color:#1A1200;font-weight:600;}
-  .sidebar-foot{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#8B8574;padding:14px 10px 4px;border-top:1px solid rgba(255,255,255,.12);margin-top:12px;}
+  .sidebar-foot{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#8B8574;padding:14px 10px 4px;border-top:1px solid rgba(255,255,255,.12);margin-top:12px;}
   .sidebar-foot .dot{color:var(--green);}
 
   .content{flex:1;min-width:0;padding:34px 40px 100px;max-width:920px;}
-  .view h2{font-family:'Space Grotesk',sans-serif;font-size:21px;margin:0 0 4px;}
+  .view h2{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:26px;letter-spacing:.01em;margin:0 0 4px;}
   .view > .sub{color:var(--ink-soft);font-size:13px;margin:0 0 20px;max-width:62ch;line-height:1.5;}
 
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:3px;margin-bottom:20px;padding:16px;}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
   .field{display:flex;flex-direction:column;gap:4px;margin-bottom:10px;}
   .field label{font-size:11.5px;color:var(--ink-soft);}
-  input,textarea,select{font-family:'IBM Plex Mono',monospace;font-size:13px;padding:8px 10px;border:1px solid var(--line);border-radius:2px;background:#FCFBF8;color:var(--ink);width:100%;}
+  input,textarea,select{font-family:'JetBrains Mono',monospace;font-size:13px;padding:8px 10px;border:1px solid var(--line);border-radius:2px;background:#FCFBF8;color:var(--ink);width:100%;}
   textarea{min-height:140px;}
-  button{font-family:'IBM Plex Sans',sans-serif;font-size:13px;font-weight:600;padding:9px 16px;border-radius:2px;border:1px solid var(--ink);background:var(--ink);color:#fff;cursor:pointer;margin-right:8px;margin-top:6px;}
+  button{font-family:'Barlow',sans-serif;font-size:13px;font-weight:600;padding:9px 16px;border-radius:2px;border:1px solid var(--ink);background:var(--ink);color:#fff;cursor:pointer;margin-right:8px;margin-top:6px;}
   button.secondary{background:var(--panel);color:var(--ink);}
   button.copper{background:var(--copper);border-color:var(--copper);color:#1A1200;}
-  .msg{margin-top:10px;padding:10px 12px;border-radius:2px;font-size:12.5px;font-family:'IBM Plex Mono',monospace;white-space:pre-wrap;}
+  .msg{margin-top:10px;padding:10px 12px;border-radius:2px;font-size:12.5px;font-family:'JetBrains Mono',monospace;white-space:pre-wrap;}
   .msg.ok{background:var(--green-dim);color:var(--green);border:1px solid var(--green);}
   .msg.bad{background:var(--red-dim);color:var(--red);border:1px solid var(--red);}
   .msg.info{background:var(--blue-dim);color:var(--blue);border:1px solid var(--blue);}
   .row{display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);font-size:12.5px;}
   .row:last-child{border-bottom:none;}
-  .row .id{font-family:'IBM Plex Mono',monospace;color:var(--blue);}
+  .row .id{font-family:'JetBrains Mono',monospace;color:var(--blue);}
 
   .menubtn{display:none;}
   @media (max-width: 820px){
@@ -448,14 +448,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div class="navgroup-label">Cadastros</div>
       <button class="navitem" id="nav-credores" onclick="showView('credores')">Credores</button>
       <button class="navitem" id="nav-pagadores" onclick="showView('pagadores')">Pagadores</button>
-      <button class="navitem" id="nav-doctypes" onclick="showView('doctypes')">Tipos de documento</button>
       <div class="navgroup-label">Ferramentas</div>
       <button class="navitem" id="nav-historico" onclick="showView('historico')">Histórico</button>
       <button class="navitem" id="nav-anexo" onclick="showView('anexo')">Anexar avulso</button>
-      <button class="navitem" id="nav-livre" onclick="showView('livre')">Consulta livre</button>
       <button class="navitem" id="nav-cfg" onclick="showView('cfg')">Configuração</button>
     </nav>
-    <div class="sidebar-foot"><span class="dot">●</span> local — sem passar pelo navegador nas chamadas ao Sienge</div>
   </aside>
 
   <main class="content">
@@ -560,34 +557,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div class="panel"><div id="pagadorList"></div></div>
     </section>
 
-    <section class="view" id="view-doctypes" style="display:none;">
-      <h2>Tipos de documento memorizados</h2>
-      <p class="sub">Relação entre o tipo identificado no PDF (ex: "NFS-e") e o código correspondente no Sienge (ex: "NF"). Preenchida automaticamente ao clicar em "Verificar código no Sienge", ou adicione direto aqui.</p>
-      <div class="panel">
-        <div id="docTypeList"></div>
-        <div class="grid" style="margin-top:10px;">
-          <div class="field"><label>Tipo identificado no PDF</label><input id="dtType" placeholder="ex: NFS-e"></div>
-          <div class="field"><label>Código no Sienge</label><input id="dtCode" placeholder="ex: NF"></div>
-        </div>
-        <button onclick="adicionarTipoDoc()">Adicionar</button>
-      </div>
-    </section>
-
     <section class="view" id="view-historico" style="display:none;">
       <h2>Histórico de lançamentos</h2>
       <p class="sub">Últimos títulos lançados por aqui — usado pra sugerir campos em notas com descrição parecida, mesmo de fornecedores diferentes.</p>
       <div class="panel"><div id="historyList"></div></div>
-    </section>
-
-    <section class="view" id="view-livre" style="display:none;">
-      <h2>Consulta livre</h2>
-      <p class="sub">Digite o caminho depois de /v1/ — ex: <code>bills/305234/taxes</code>, <code>payment-categories?limit=200</code>. Mostra a resposta crua do Sienge.</p>
-      <div class="panel">
-        <div class="field"><label>Caminho + parâmetros (GET)</label><input id="freePath" placeholder="ex: bills/305234/taxes"></div>
-        <button onclick="consultaLivre()">Consultar</button>
-        <div id="livreMsg"></div>
-        <textarea id="livreOut" readonly style="min-height:220px;font-size:11.5px;margin-top:8px;"></textarea>
-      </div>
     </section>
 
     <section class="view" id="view-cfg" style="display:none;">
@@ -717,14 +690,6 @@ async function renderPagadorList(){
     : '<p>Nenhum pagador memorizado ainda.</p>';
 }
 
-async function renderDocTypeList(){
-  const r = await fetch('/api/doctype-map'); const map = await r.json();
-  const entries = Object.entries(map);
-  document.getElementById('docTypeList').innerHTML = entries.length
-    ? entries.map(([tipo,codigo]) => `<div class="row"><span>${escapeHtml(tipo)}</span><span class="id">${escapeHtml(codigo)}</span><button class="presetbtn" onclick="removerTipoDoc('${escapeHtml(tipo)}')">Remover</button></div>`).join('')
-    : '<p>Nenhum tipo memorizado ainda.</p>';
-}
-
 async function renderHistoryList(){
   const r = await fetch('/api/history'); const history = await r.json();
   const recent = history.slice(-15).reverse();
@@ -735,24 +700,6 @@ async function renderHistoryList(){
         <span class="id">CC ${escapeHtml(h.costCenterId||'—')} · plano ${escapeHtml(h.paymentCategoriesId||'—')} · billId ${escapeHtml(h.billId||'—')}</span>
       </div>`).join('')
     : '<p>Nenhum título lançado ainda por aqui.</p>';
-}
-
-async function adicionarTipoDoc(){
-  const tipo = dtType.value.trim();
-  const codigo = dtCode.value.trim();
-  if(!tipo || !codigo){ return; }
-  const r = await fetch('/api/doctype-map'); const map = await r.json();
-  map[tipo.toLowerCase()] = codigo;
-  await fetch('/api/doctype-map', { method:'POST', body: JSON.stringify(map) });
-  dtType.value = ''; dtCode.value = '';
-  renderDocTypeList();
-}
-
-async function removerTipoDoc(tipo){
-  const r = await fetch('/api/doctype-map'); const map = await r.json();
-  delete map[tipo];
-  await fetch('/api/doctype-map', { method:'POST', body: JSON.stringify(map) });
-  renderDocTypeList();
 }
 
 function fileToBase64(file){
@@ -1225,26 +1172,12 @@ async function verificarTipoDoc(){
     const dt = await fetch('/api/doctype-map'); const docMap = await dt.json();
     docMap[tipoExtraido.toLowerCase()] = codigo;
     await fetch('/api/doctype-map', { method:'POST', body: JSON.stringify(docMap) });
-    renderDocTypeList();
   }
-}
-
-async function consultaLivre(){
-  const path = freePath.value.trim().replace(/^\/+/, '');
-  if(!path){ showMsg('livreMsg','bad','Digite um caminho.'); return; }
-  showMsg('livreMsg','info','Consultando...');
-  livreOut.value = '';
-  const r = await fetch('/api/sienge/' + path);
-  const text = await r.text();
-  showMsg('livreMsg', r.status >= 200 && r.status < 300 ? 'ok' : 'bad', 'Status ' + r.status);
-  try{ livreOut.value = JSON.stringify(JSON.parse(text), null, 2); }
-  catch(e){ livreOut.value = text; }
 }
 
 loadConfig();
 renderCredList();
 renderPagadorList();
-renderDocTypeList();
 renderHistoryList();
 </script>
 </body>
