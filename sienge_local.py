@@ -27,6 +27,9 @@ import json
 import os
 import re
 import base64
+import hashlib
+import secrets
+import datetime
 import threading
 import webbrowser
 import urllib.request
@@ -55,6 +58,14 @@ CREDITOR_MAP_FILE = os.path.join(DATA_DIR, 'credores_memorizados.json')
 DOC_TYPE_MAP_FILE = os.path.join(DATA_DIR, 'tipos_documento_memorizados.json')
 HISTORY_FILE = os.path.join(DATA_DIR, 'historico_titulos.json')
 PAGADOR_MAP_FILE = os.path.join(DATA_DIR, 'pagadores_memorizados.json')
+USERS_FILE = os.path.join(DATA_DIR, 'usuarios.json')
+
+# Senha mestre de administrador — usada só pra entrar como "admin" a primeira
+# vez, antes de existir qualquer usuário aprovado (evita ficar trancado pra
+# fora do próprio site). Configure isso na hospedagem (variável de ambiente
+# SITE_PASSWORD); localmente, sem essa variável, o site não pede login.
+MASTER_PASSWORD = os.environ.get('SITE_PASSWORD', '')
+SESSIONS = {}  # token -> username (em memória — reinicia com o servidor)
 
 
 # --------------------------------------------------------------------------
@@ -96,6 +107,87 @@ def get_doc_type_map():
 
 def get_pagador_map():
     return load_json_file(PAGADOR_MAP_FILE, {})
+
+
+def get_users():
+    return load_json_file(USERS_FILE, {})
+
+
+def save_users(users):
+    save_json_file(USERS_FILE, users)
+
+
+def hash_password(password, salt=None):
+    if salt is None:
+        salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt.encode('utf-8'), 100_000).hex()
+    return salt, digest
+
+
+def verify_password(password, salt, digest):
+    _, check = hash_password(password, salt)
+    return secrets.compare_digest(check, digest)
+
+
+def register_user(username, password):
+    username = (username or '').strip().lower()
+    if not username or not password:
+        return False, 'Preencha usuário e senha.'
+    if len(password) < 4:
+        return False, 'A senha precisa ter pelo menos 4 caracteres.'
+    users = get_users()
+    if username in users:
+        return False, 'Esse usuário já existe.'
+    salt, digest = hash_password(password)
+    users[username] = {
+        'salt': salt, 'passwordHash': digest,
+        'approved': False, 'isAdmin': False,
+        'createdAt': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    }
+    save_users(users)
+    return True, 'Conta criada — aguarde um administrador aprovar seu acesso.'
+
+
+def authenticate(username, password):
+    """Retorna (ok, is_admin, motivo_se_falhar)."""
+    username = (username or '').strip().lower()
+    if MASTER_PASSWORD and username == 'admin' and password == MASTER_PASSWORD:
+        return True, True, None
+    users = get_users()
+    user = users.get(username)
+    if not user:
+        return False, False, 'Usuário ou senha incorretos.'
+    if not verify_password(password, user['salt'], user['passwordHash']):
+        return False, False, 'Usuário ou senha incorretos.'
+    if not user.get('approved'):
+        return False, False, 'Sua conta ainda não foi aprovada por um administrador.'
+    return True, bool(user.get('isAdmin')), None
+
+
+def create_session(username):
+    token = secrets.token_hex(24)
+    SESSIONS[token] = username
+    return token
+
+
+def get_session_user(handler):
+    cookie_header = handler.headers.get('Cookie', '')
+    token = None
+    for part in cookie_header.split(';'):
+        part = part.strip()
+        if part.startswith('session='):
+            token = part[len('session='):]
+            break
+    if not token or token not in SESSIONS:
+        return None
+    username = SESSIONS[token]
+    if username == 'admin' and MASTER_PASSWORD:
+        return {'username': 'admin', 'isAdmin': True}
+    users = get_users()
+    user = users.get(username)
+    if not user or not user.get('approved'):
+        return None
+    return {'username': username, 'isAdmin': bool(user.get('isAdmin'))}
 
 
 def get_history():
@@ -356,6 +448,89 @@ def send_boleto_payment_info(bill_id, linha_digitavel, payment_type_id=19, benef
 # Interface (servida localmente — mesma origem do backend, sem CORS)
 # --------------------------------------------------------------------------
 
+LOGIN_PAGE = r"""<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Entrar — Extrator de Notas</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+  :root{ --ink:#18160F; --paper:#FAF8F3; --panel:#FFFFFF; --line:#E7E2D5; --copper:#F2A400; --ink-soft:#6B6558; --red:#B23A3A; --red-dim:#F6E4E4; --green:#3F7D53; --green-dim:#E4EFE7; }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);font-family:'Barlow',sans-serif;color:var(--ink);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:32px 28px;max-width:360px;width:100%;}
+  .brand{display:flex;align-items:center;gap:10px;margin-bottom:22px;}
+  .brand svg{width:32px;height:28px;}
+  .brand .word{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:20px;letter-spacing:.01em;text-transform:uppercase;}
+  h1{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:22px;margin:0 0 4px;}
+  p.sub{color:var(--ink-soft);font-size:13px;margin:0 0 20px;}
+  .field{margin-bottom:12px;}
+  .field label{display:block;font-size:11.5px;color:var(--ink-soft);margin-bottom:4px;}
+  .field input{width:100%;font-family:'JetBrains Mono',monospace;font-size:13px;padding:9px 10px;border:1px solid var(--line);border-radius:2px;background:#FCFBF8;color:var(--ink);}
+  button{width:100%;font-family:'Barlow',sans-serif;font-size:14px;font-weight:600;padding:10px;border-radius:2px;border:1px solid var(--ink);background:var(--ink);color:#fff;cursor:pointer;margin-top:6px;}
+  button.copper{background:var(--copper);border-color:var(--copper);color:#1A1200;}
+  .switch{text-align:center;margin-top:16px;font-size:12.5px;color:var(--ink-soft);}
+  .switch a{color:var(--ink);cursor:pointer;text-decoration:underline;}
+  .msg{margin-top:14px;padding:10px 12px;border-radius:2px;font-size:12.5px;}
+  .msg.bad{background:var(--red-dim);color:var(--red);border:1px solid var(--red);}
+  .msg.ok{background:var(--green-dim);color:var(--green);border:1px solid var(--green);}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="brand">
+    <svg viewBox="0 0 120 100" xmlns="http://www.w3.org/2000/svg">
+      <path d="M8 38 L45 78 L112 8" stroke="#18160F" stroke-width="24" fill="none" stroke-linecap="square"/>
+      <rect x="36" y="0" width="32" height="32" fill="#F2A400" transform="rotate(45 52 16)"/>
+    </svg>
+    <div class="word">vex</div>
+  </div>
+
+  <div id="loginForm">
+    <h1>Entrar</h1>
+    <p class="sub">Acesse com seu usuário e senha aprovados.</p>
+    <div class="field"><label>Usuário</label><input id="lUser" autocomplete="username"></div>
+    <div class="field"><label>Senha</label><input id="lPass" type="password" autocomplete="current-password"></div>
+    <button class="copper" onclick="doLogin()">Entrar</button>
+    <div id="loginMsg"></div>
+    <div class="switch">Ainda não tem conta? <a onclick="showRegister()">Solicitar acesso</a></div>
+  </div>
+
+  <div id="registerForm" style="display:none;">
+    <h1>Solicitar acesso</h1>
+    <p class="sub">Escolha um usuário e senha — um administrador precisa aprovar antes de você conseguir entrar.</p>
+    <div class="field"><label>Usuário</label><input id="rUser" autocomplete="username"></div>
+    <div class="field"><label>Senha</label><input id="rPass" type="password" autocomplete="new-password"></div>
+    <button onclick="doRegister()">Solicitar acesso</button>
+    <div id="registerMsg"></div>
+    <div class="switch">Já tem conta? <a onclick="showLogin()">Entrar</a></div>
+  </div>
+</div>
+<script>
+function showRegister(){ document.getElementById('loginForm').style.display='none'; document.getElementById('registerForm').style.display='block'; }
+function showLogin(){ document.getElementById('registerForm').style.display='none'; document.getElementById('loginForm').style.display='block'; }
+function msg(id, type, text){ document.getElementById(id).innerHTML = `<div class="msg ${type}">${text}</div>`; }
+
+async function doLogin(){
+  const r = await fetch('/api/login', { method:'POST', body: JSON.stringify({ username:lUser.value, password:lPass.value }) });
+  const data = await r.json();
+  if(r.status === 200){ location.reload(); }
+  else { msg('loginMsg','bad', data.error || 'Não foi possível entrar.'); }
+}
+async function doRegister(){
+  const r = await fetch('/api/register', { method:'POST', body: JSON.stringify({ username:rUser.value, password:rPass.value }) });
+  const data = await r.json();
+  msg('registerMsg', data.ok ? 'ok' : 'bad', data.message);
+  if(data.ok){ rUser.value=''; rPass.value=''; }
+}
+lPass?.addEventListener('keydown', e => { if(e.key === 'Enter') doLogin(); });
+rPass?.addEventListener('keydown', e => { if(e.key === 'Enter') doRegister(); });
+</script>
+</body>
+</html>
+"""
+
 HTML_PAGE = r"""<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -452,7 +627,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <button class="navitem" id="nav-historico" onclick="showView('historico')">Histórico</button>
       <button class="navitem" id="nav-anexo" onclick="showView('anexo')">Anexar avulso</button>
       <button class="navitem" id="nav-cfg" onclick="showView('cfg')">Configuração</button>
+      <button class="navitem" id="nav-admin" onclick="showView('admin')" style="display:none;">Administração</button>
     </nav>
+    <button class="navitem" id="logoutBtn" onclick="doLogout()" style="display:none;margin-top:auto;border-top:1px solid rgba(255,255,255,.12);border-radius:0;padding-top:14px;">Sair</button>
   </aside>
 
   <main class="content">
@@ -588,13 +765,18 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <h2>Anexar PDF a um título já existente</h2>
       <p class="sub">Use isso só se precisar anexar um arquivo depois, num título que já foi criado antes (o fluxo normal de "Nota → Sienge" já anexa sozinho).</p>
       <div class="panel">
-      <div class="panel">
         <div class="field"><label>ID do título (billId)</label><input id="aBillId2" placeholder="ex: 4521"></div>
         <div class="field"><label>Descrição do anexo</label><input id="aDesc2" placeholder="ex: NFS-e 1060 + boleto"></div>
         <div class="field"><label>Arquivo PDF</label><input id="aFile2" type="file" accept="application/pdf"></div>
         <button class="secondary" onclick="anexarPdfAvulso()">Enviar anexo</button>
         <div id="anexoMsg2"></div>
       </div>
+    </section>
+
+    <section class="view" id="view-admin" style="display:none;">
+      <h2>Administração</h2>
+      <p class="sub">Aprove, recuse ou remova o acesso de cada pessoa que solicitou entrar.</p>
+      <div class="panel"><div id="usersList"></div></div>
     </section>
 
   </main>
@@ -1175,10 +1357,57 @@ async function verificarTipoDoc(){
   }
 }
 
+async function doLogout(){
+  await fetch('/api/logout', { method:'POST', body: '{}' });
+  location.reload();
+}
+
+async function checkMe(){
+  try{
+    const r = await fetch('/api/me');
+    if(r.status !== 200) return;
+    const me = await r.json();
+    if(me.username !== 'local'){
+      document.getElementById('logoutBtn').style.display = 'block';
+    }
+    if(me.isAdmin){
+      document.getElementById('nav-admin').style.display = 'block';
+      renderUsersList();
+    }
+  }catch(e){ /* segue sem admin */ }
+}
+
+async function renderUsersList(){
+  const r = await fetch('/api/users');
+  if(r.status !== 200) return;
+  const users = await r.json();
+  const entries = Object.entries(users);
+  document.getElementById('usersList').innerHTML = entries.length ? entries.map(([username, u]) => `
+    <div class="row" style="flex-direction:column;align-items:flex-start;">
+      <span style="width:100%;display:flex;justify-content:space-between;align-items:center;">
+        <b>${escapeHtml(username)}</b>
+        <span class="id">${u.approved ? (u.isAdmin ? 'admin' : 'aprovado') : 'pendente'}</span>
+      </span>
+      <div style="margin-top:6px;">
+        ${!u.approved ? `<button onclick="userAction('approve','${escapeHtml(username)}')">Aprovar</button>
+                          <button class="secondary" onclick="userAction('reject','${escapeHtml(username)}')">Recusar</button>` : `
+        <button class="secondary" onclick="userAction('toggle-admin','${escapeHtml(username)}')">${u.isAdmin ? 'Tirar admin' : 'Tornar admin'}</button>
+        <button class="secondary" onclick="userAction('delete','${escapeHtml(username)}')">Remover acesso</button>`}
+      </div>
+    </div>
+  `).join('') : '<p>Nenhum pedido de acesso ainda.</p>';
+}
+
+async function userAction(action, username){
+  await fetch('/api/users/' + action, { method:'POST', body: JSON.stringify({ username }) });
+  renderUsersList();
+}
+
 loadConfig();
 renderCredList();
 renderPagadorList();
 renderHistoryList();
+checkMe();
 </script>
 </body>
 </html>
@@ -1196,35 +1425,30 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass  # silencia o log padrão no terminal
 
-    def _check_site_auth(self):
-        """Só exige senha quando o site está hospedado na nuvem (tem
-        SITE_PASSWORD configurada) — localmente, na máquina de cada um,
-        continua sem pedir nada, como sempre."""
-        if not SITE_PASSWORD:
-            return True
-        auth = self.headers.get('Authorization', '')
-        if auth.startswith('Basic '):
-            try:
-                decoded = base64.b64decode(auth[6:]).decode('utf-8')
-                _, _, pwd = decoded.partition(':')
-                if pwd == SITE_PASSWORD:
-                    return True
-            except Exception:
-                pass
+    def _current_user(self):
+        if not MASTER_PASSWORD:
+            return {'username': 'local', 'isAdmin': True}  # sem senha mestre configurada = uso local, sem login
+        return get_session_user(self)
+
+    def _require_login_json(self):
         self.send_response(401)
-        self.send_header('WWW-Authenticate', 'Basic realm="Extrator Sienge"')
-        self.send_header('Content-Type', 'text/plain; charset=utf-8')
-        body = 'Senha necessária.'.encode('utf-8')
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        body = json.dumps({'error': 'not_authenticated'}).encode('utf-8')
         self.send_header('Content-Length', str(len(body)))
         self.end_headers()
         self.wfile.write(body)
-        return False
 
-    def _send_json(self, status, payload):
+    def _set_session_cookie(self, token):
+        self.send_header('Set-Cookie', f'session={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000')
+
+    def _send_json(self, status, payload, extra_headers=None):
         body = json.dumps(payload, ensure_ascii=False).encode('utf-8')
         self.send_response(status)
         self.send_header('Content-Type', 'application/json; charset=utf-8')
         self.send_header('Content-Length', str(len(body)))
+        if extra_headers:
+            for k, v in extra_headers.items():
+                self.send_header(k, v)
         self.end_headers()
         self.wfile.write(body)
 
@@ -1237,10 +1461,18 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        if not self._check_site_auth():
-            return
         parsed = urllib.parse.urlsplit(self.path)
         path, query = parsed.path, parsed.query
+
+        if path == '/':
+            user = self._current_user()
+            self._send_html(HTML_PAGE if user else LOGIN_PAGE)
+            return
+
+        if path.startswith('/api/') and path not in ('/api/login', '/api/register'):
+            if not self._current_user():
+                self._require_login_json()
+                return
         try:
             self._route_get(path, query)
         except Exception as e:
@@ -1250,9 +1482,7 @@ class Handler(BaseHTTPRequestHandler):
                 pass
 
     def _route_get(self, path, query):
-        if path == '/':
-            self._send_html(HTML_PAGE)
-        elif path == '/api/config':
+        if path == '/api/config':
             self._send_json(200, get_config())
         elif path == '/api/creditor-map':
             self._send_json(200, get_creditor_map())
@@ -1262,6 +1492,16 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(200, get_pagador_map())
         elif path == '/api/history':
             self._send_json(200, get_history())
+        elif path == '/api/me':
+            self._send_json(200, self._current_user())
+        elif path == '/api/users':
+            user = self._current_user()
+            if not user or not user.get('isAdmin'):
+                self._send_json(403, {'error': 'Só administradores podem ver isso.'})
+                return
+            users = get_users()
+            safe = {u: {'approved': v.get('approved', False), 'isAdmin': v.get('isAdmin', False), 'createdAt': v.get('createdAt', '')} for u, v in users.items()}
+            self._send_json(200, safe)
         elif path.startswith('/api/sienge/'):
             sienge_path = path[len('/api/sienge/'):]
             status, data = call_sienge('GET', sienge_path, query=query)
@@ -1270,8 +1510,13 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(404, {'error': 'not found'})
 
     def do_POST(self):
-        if not self._check_site_auth():
+        parsed = urllib.parse.urlsplit(self.path)
+        path, query = parsed.path, parsed.query
+
+        if path not in ('/api/login', '/api/register') and not self._current_user():
+            self._require_login_json()
             return
+
         length = int(self.headers.get('Content-Length', 0))
         raw = self.rfile.read(length) if length else b''
         try:
@@ -1279,9 +1524,6 @@ class Handler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             self._send_json(400, {'error': 'JSON inválido no corpo da requisição'})
             return
-
-        parsed = urllib.parse.urlsplit(self.path)
-        path, query = parsed.path, parsed.query
 
         try:
             self._route_post(path, query, body)
@@ -1294,7 +1536,51 @@ class Handler(BaseHTTPRequestHandler):
                 pass  # conexão já pode ter caído; não tem mais o que fazer
 
     def _route_post(self, path, query, body):
-        if path == '/api/config':
+        if path == '/api/login':
+            ok, is_admin, err = authenticate(body.get('username', ''), body.get('password', ''))
+            if not ok:
+                self._send_json(401, {'error': err or 'Não foi possível entrar.'})
+                return
+            username = (body.get('username') or '').strip().lower()
+            token = create_session(username)
+            self._send_json(200, {'ok': True, 'isAdmin': is_admin}, extra_headers={
+                'Set-Cookie': f'session={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000'
+            })
+        elif path == '/api/register':
+            ok, msg = register_user(body.get('username', ''), body.get('password', ''))
+            self._send_json(200 if ok else 400, {'ok': ok, 'message': msg})
+        elif path == '/api/logout':
+            cookie_header = self.headers.get('Cookie', '')
+            for part in cookie_header.split(';'):
+                part = part.strip()
+                if part.startswith('session='):
+                    SESSIONS.pop(part[len('session='):], None)
+            self._send_json(200, {'ok': True}, extra_headers={
+                'Set-Cookie': 'session=; Path=/; HttpOnly; Max-Age=0'
+            })
+        elif path.startswith('/api/users/'):
+            user = self._current_user()
+            if not user or not user.get('isAdmin'):
+                self._send_json(403, {'error': 'Só administradores podem fazer isso.'})
+                return
+            action = path[len('/api/users/'):]
+            target = (body.get('username') or '').strip().lower()
+            users = get_users()
+            if target not in users:
+                self._send_json(404, {'error': 'Usuário não encontrado.'})
+                return
+            if action == 'approve':
+                users[target]['approved'] = True
+            elif action == 'reject' or action == 'delete':
+                del users[target]
+            elif action == 'toggle-admin':
+                users[target]['isAdmin'] = not users[target].get('isAdmin', False)
+            else:
+                self._send_json(404, {'error': 'Ação desconhecida.'})
+                return
+            save_users(users)
+            self._send_json(200, {'ok': True})
+        elif path == '/api/config':
             save_json_file(CONFIG_FILE, body)
             self._send_json(200, {'ok': True})
         elif path == '/api/creditor-map':
