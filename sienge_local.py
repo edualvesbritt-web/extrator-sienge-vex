@@ -47,10 +47,15 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # caminho: r"\\SERVIDOR\Compartilhado\ExtratorSienge" ou r"Z:\ExtratorSienge"
 # (letra de uma unidade de rede mapeada). Deixe como está (vazio) se cada
 # pessoa for usar só na própria máquina, sem compartilhar nada.
+#
+# Na Render (ou outro serviço de nuvem com disco permanente), não precisa
+# editar essa linha — em vez disso, configure a variável de ambiente DATA_DIR
+# apontando pro caminho onde o disco foi montado (ex: DATA_DIR=/data). Isso
+# tem prioridade sobre SHARED_FOLDER, então funciona sem tocar no código.
 # ---------------------------------------------------------------------------
 SHARED_FOLDER = r""
 
-DATA_DIR = SHARED_FOLDER if SHARED_FOLDER.strip() else BASE_DIR
+DATA_DIR = os.environ.get('DATA_DIR', '').strip() or (SHARED_FOLDER if SHARED_FOLDER.strip() else BASE_DIR)
 os.makedirs(DATA_DIR, exist_ok=True)
 
 CONFIG_FILE = os.path.join(DATA_DIR, 'sienge_config.json')
