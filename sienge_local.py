@@ -26,6 +26,7 @@ COMO USAR:
 import json
 import os
 import re
+import io
 import base64
 import hashlib
 import secrets
@@ -292,13 +293,18 @@ def extract_id_from_location(location):
     return None
 
 
-def call_sienge_attachment(bill_id, description, filename, file_bytes):
+def call_sienge_attachment(bill_id, description, filename, file_bytes, pdf_password=None):
     """Envia um arquivo como anexo de um título — multipart/form-data,
     formato exigido especificamente por esse endpoint (diferente do JSON
     usado em todo o resto da API)."""
     cfg = get_config()
     if not cfg.get('sub') or not cfg.get('user') or not cfg.get('pass'):
         return 400, {'error': 'Preencha subdomínio, usuário e senha na Configuração antes de usar.'}
+
+    if pdf_password:
+        file_bytes, err = decrypt_pdf_bytes(file_bytes, pdf_password)
+        if err:
+            return 400, {'error': err}
 
     query = urllib.parse.urlencode({'description': description})
     url = f"https://api.sienge.com.br/{cfg['sub']}/public/api/v1/bills/{bill_id}/attachments?{query}"
@@ -368,11 +374,42 @@ Boletos frequentemente repetem o mesmo conjunto de campos mais de uma vez na mes
 Se não encontrar um campo com confiança, use null. Não invente valores."""
 
 
-def call_extraction(filename, file_bytes):
+def decrypt_pdf_bytes(file_bytes, password):
+    """Se o PDF tiver senha e ela for informada, devolve os bytes sem
+    proteção (pra IA e pro Sienge conseguirem ler). Sem senha informada e o
+    PDF não sendo protegido, devolve os bytes originais sem mexer."""
+    if not password:
+        return file_bytes, None
+    try:
+        from pypdf import PdfReader, PdfWriter
+    except ImportError:
+        return file_bytes, 'A biblioteca pypdf não está instalada no servidor — a senha não pôde ser usada. Peça pra adicionar "pypdf" no Build Command da hospedagem.'
+    try:
+        reader = PdfReader(io.BytesIO(file_bytes))
+        if reader.is_encrypted:
+            result = reader.decrypt(password)
+            if result == 0:
+                return file_bytes, 'Senha incorreta pra esse PDF.'
+        writer = PdfWriter()
+        for page in reader.pages:
+            writer.add_page(page)
+        out = io.BytesIO()
+        writer.write(out)
+        return out.getvalue(), None
+    except Exception as e:
+        return file_bytes, f'Erro ao tentar abrir o PDF com essa senha: {e}'
+
+
+def call_extraction(filename, file_bytes, pdf_password=None):
     cfg = get_config()
     api_key = cfg.get('anthropicApiKey', '').strip()
     if not api_key:
         return 400, {'error': 'Preencha a chave de API da Anthropic na Configuração antes de extrair PDFs.'}
+
+    if pdf_password:
+        file_bytes, err = decrypt_pdf_bytes(file_bytes, pdf_password)
+        if err:
+            return 400, {'error': err}
 
     file_b64 = base64.b64encode(file_bytes).decode('ascii')
     payload = {
@@ -643,6 +680,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <h2>Nota → Sienge</h2>
       <p class="sub">Escolha um ou vários PDFs, extraia, confira/complete os campos, e clique em enviar — cria o título e anexa o mesmo PDF automaticamente. Selecionando vários, o programa processa um de cada vez e já carrega o próximo depois de cada envio. Precisa da chave de API preenchida em Configuração.</p>
       <div class="field"><label>Arquivo(s) PDF</label><input id="xFile" type="file" accept="application/pdf" multiple onchange="prepararFila()"></div>
+      <div class="field"><label>Senha do PDF (se algum boleto tiver senha — vale pra toda a fila)</label><input id="xPdfPassword" type="password" placeholder="deixe em branco se não tiver senha"></div>
       <div id="filaMsg"></div>
       <button onclick="extrairPdf()">Extrair dados</button>
       <div id="extrairMsg"></div>
@@ -900,9 +938,10 @@ function fileToBase64(file){
 
 async function enviarAnexo(billId, description, file){
   const fileBase64 = await fileToBase64(file);
+  const pdfPassword = document.getElementById('xPdfPassword')?.value || '';
   const r = await fetch('/api/attach', {
     method:'POST',
-    body: JSON.stringify({ billId, description, filename: file.name, fileBase64 })
+    body: JSON.stringify({ billId, description, filename: file.name, fileBase64, pdfPassword })
   });
   const data = await r.json();
   return { ok: r.status >= 200 && r.status < 300, status: r.status, data };
@@ -1150,7 +1189,8 @@ function runExtraction(file){
   return (async () => {
     try{
       const fileBase64 = await fileToBase64(file);
-      const r = await fetch('/api/extract', { method:'POST', body: JSON.stringify({ filename:file.name, fileBase64 }) });
+      const pdfPassword = document.getElementById('xPdfPassword').value;
+      const r = await fetch('/api/extract', { method:'POST', body: JSON.stringify({ filename:file.name, fileBase64, pdfPassword }) });
       const data = await r.json();
       return { ok: r.status >= 200 && r.status < 300, status: r.status, data };
     }catch(e){
@@ -1203,7 +1243,8 @@ async function extrairLinhaDoAnexo(){
   showMsg('xAttachMsg','info','Lendo o anexo...');
   try{
     const fileBase64 = await fileToBase64(file);
-    const r = await fetch('/api/extract', { method:'POST', body: JSON.stringify({ filename:file.name, fileBase64 }) });
+    const pdfPassword = document.getElementById('xPdfPassword').value;
+    const r = await fetch('/api/extract', { method:'POST', body: JSON.stringify({ filename:file.name, fileBase64, pdfPassword }) });
     const data = await r.json();
     if(r.status < 200 || r.status >= 300){
       showMsg('xAttachMsg','bad','Erro ao ler o anexo: ' + JSON.stringify(data).slice(0,300));
@@ -1624,6 +1665,7 @@ class Handler(BaseHTTPRequestHandler):
             description = body.get('description', '')
             filename = body.get('filename', 'documento.pdf')
             file_b64 = body.get('fileBase64', '')
+            pdf_password = body.get('pdfPassword', '').strip() or None
             if not bill_id or not file_b64:
                 self._send_json(400, {'error': 'Faltam billId ou o arquivo.'})
                 return
@@ -1632,11 +1674,12 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 self._send_json(400, {'error': 'Arquivo em base64 inválido.'})
                 return
-            status, data = call_sienge_attachment(bill_id, description, filename, file_bytes)
+            status, data = call_sienge_attachment(bill_id, description, filename, file_bytes, pdf_password)
             self._send_json(status, data)
         elif path == '/api/extract':
             filename = body.get('filename', 'documento.pdf')
             file_b64 = body.get('fileBase64', '')
+            pdf_password = body.get('pdfPassword', '').strip() or None
             if not file_b64:
                 self._send_json(400, {'error': 'Falta o arquivo.'})
                 return
@@ -1645,7 +1688,7 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 self._send_json(400, {'error': 'Arquivo em base64 inválido.'})
                 return
-            status, data = call_extraction(filename, file_bytes)
+            status, data = call_extraction(filename, file_bytes, pdf_password)
             self._send_json(status, data)
         elif path == '/api/boleto-payment':
             bill_id = body.get('billId')
