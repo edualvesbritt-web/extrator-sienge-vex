@@ -1211,10 +1211,17 @@ function prepararFila(){
   queueIndex = 0;
   queueCache = {};
   renderFilaStatus();
-  if(queue.length){
-    startExtraction(0); // já começa a ler o primeiro assim que os arquivos são escolhidos
-  }
+  // Não pré-carrega o primeiro arquivo aqui — se tiver senha, o usuário
+  // ainda não teve chance de digitar. A leitura só começa de verdade quando
+  // clica em "Extrair dados" (ou quando avança pro próximo da fila, momento
+  // em que a senha já foi preenchida há tempo).
 }
+document.getElementById('xPdfPassword')?.addEventListener('input', () => {
+  // Se a senha mudar depois de alguma leitura já ter começado em segundo
+  // plano (com a senha antiga/vazia), descarta esse cache — força reler
+  // com a senha nova da próxima vez.
+  queueCache = {};
+});
 
 function renderFilaStatus(){
   const el = document.getElementById('filaMsg');
