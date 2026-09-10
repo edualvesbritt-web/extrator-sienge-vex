@@ -349,13 +349,13 @@ EXTRACTION_PROMPT = """Você é um extrator de dados de documentos fiscais e bol
  "fornecedor_cnpj": string ou null (apenas números),
  "pagador_nome": string ou null (o "Tomador"/"Pagador"/"Sacado" — quem contratou o serviço ou vai pagar, NÃO o fornecedor),
  "pagador_cnpj": string ou null (CNPJ do pagador/tomador, apenas números),
- "numero_documento": string ou null,
+ "numero_documento": string ou null (o número real do documento, não um código interno de controle — em NF-e/NFS-e é o "Número da Nota"/"Número da NFS-e" que aparece no topo do documento; NÃO use o "Número do RPS" (número provisório que a prefeitura substitui pelo número definitivo da NFS-e) nem a "Chave de acesso" (sequência longa de 44 dígitos). Em boletos, use o "Número do documento" (às vezes "Nº Documento" ou "Seu Número" — o mesmo número da nota/fatura que originou o boleto); NÃO use o "Nosso Número" (código de controle interno do banco/cedente, não é o número da nota). Em faturas, use o número da fatura.),
  "tipo_documento": string ou null (ex: "NFS-e", "NF-e", "Fatura", "Boleto"),
  "data_emissao": string "YYYY-MM-DD" ou null,
  "data_vencimento": string "YYYY-MM-DD" ou null,
  "valor_total": number ou null,
  "descricao": string curta (até 140 caracteres) resumindo o produto/serviço, ou null,
- "linha_digitavel": string ou null (SOMENTE para boletos bancários — a sequência longa de números agrupados por pontos, geralmente perto do código de barras, tipo "74891.12610 00363.908096 18400.971059 7 15550000020000". Mantenha os espaços e pontos exatamente como aparecem no documento. Para notas fiscais e faturas sem boleto, deixe null.),
+ "linha_digitavel": string ou null (SOMENTE para boletos bancários — a linha digitável tem SEMPRE exatamente 47 dígitos, em 5 blocos separados por espaço, no formato "AAAAA.AAAAA BBBBB.BBBBBB CCCCC.CCCCCC D EEEEEEEEEEEEEE" (10+11+11+1+14 dígitos), tipo "74891.12610 00363.908096 18400.971059 7 15550000020000". Pegue SOMENTE esses 5 blocos, mantendo os espaços e pontos exatamente como aparecem. NÃO inclua o código do banco (um número curto, tipo "237-9" ou "341-7", que aparece separado — geralmente numa caixinha à esquerda ou acima da linha digitável, perto do nome/logo do banco) nem qualquer outro número ou texto antes ou depois dos 5 blocos. Para notas fiscais e faturas sem boleto, deixe null.),
  "iss_valor": number ou null (valor do ISSQN — some da nota mesmo se não for retido, costuma vir como "Vl. ISSQN" ou "Valor do ISS"),
  "iss_aliquota": number ou null (percentual do ISS, ex: 4.25 — costuma vir como "Alíquota"),
  "iss_retido": boolean (true se a nota indicar "Retido"/"Retenção" pro ISS, false se disser "Não Retido" ou não mencionar retenção),
@@ -449,7 +449,23 @@ def call_extraction(filename, file_bytes, pdf_password=None):
         fields = json.loads(cleaned)
     except json.JSONDecodeError:
         return 502, {'error': 'A IA respondeu, mas não veio um JSON válido: ' + text[:300]}
+    if fields.get('linha_digitavel'):
+        fields['linha_digitavel'] = sanitize_linha_digitavel(fields['linha_digitavel'])
     return 200, fields
+
+
+LINHA_DIGITAVEL_RE = re.compile(r'\d{5}\.\d{5}\s+\d{5}\.\d{6}\s+\d{5}\.\d{6}\s+\d\s+\d{14}')
+
+
+def sanitize_linha_digitavel(raw):
+    """A IA às vezes captura junto o código do banco (ex: "237-9") que fica ao
+    lado da linha digitável no boleto, o que quebra o número quando os pontos/
+    espaços são removidos pra mandar pro Sienge. A linha digitável de verdade
+    tem sempre um formato fixo (47 dígitos em 5 blocos) — aqui a gente extrai
+    só esse trecho de dentro do que a IA devolveu, descartando qualquer coisa
+    a mais (código de banco, texto solto etc.), sem depender só do prompt."""
+    match = LINHA_DIGITAVEL_RE.search(raw)
+    return match.group(0) if match else raw
 
 
 def send_boleto_payment_info(bill_id, linha_digitavel, payment_type_id=19, beneficiary_id=None):
@@ -795,9 +811,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <div class="field"><label>Endpoint de centros de custo</label><input id="cCC"></div>
           <div class="field"><label>Endpoint de empresas</label><input id="cComp"></div>
           <div class="field" style="grid-column:1/-1;"><label>Chave de API da Anthropic (opcional — habilita extrair PDF aqui dentro)</label><input id="cApiKey" type="password" placeholder="sk-ant-..."></div>
-          <div class="field"><label>Código do imposto ISS (taxId)</label><input id="cIssTaxId" placeholder='ex: "ISS" (confirme — ainda não testado)'></div>
           <div class="field"><label>Código do imposto INSS (taxId)</label><input id="cInssTaxId" placeholder='ex: "INSS" (confirme — ainda não testado)'></div>
-          <p style="grid-column:1/-1;font-size:11.5px;color:var(--ink-soft);margin:0;">IRRF (código "IR") e PIS/COFINS/CSLL (código "PIS/CSLL") já vêm fixos no programa — não precisa preencher.</p>
+          <p style="grid-column:1/-1;font-size:11.5px;color:var(--ink-soft);margin:0;">ISS (código "ISS"), IRRF (código "IR") e PIS/COFINS/CSLL (código "PIS/CSLL") já vêm fixos no programa — não precisa preencher.</p>
         </div>
         <button onclick="saveConfig()">Salvar configuração</button>
         <div id="cfgMsg"></div>
@@ -857,13 +872,13 @@ async function loadConfig(){
   cEndpoint.value = c.endpoint || 'bills'; cCC.value = c.costCenterEndpoint || 'cost-centers';
   cComp.value = c.companyEndpoint || 'companies';
   cApiKey.value = c.anthropicApiKey || '';
-  cIssTaxId.value = c.issTaxId || ''; cInssTaxId.value = c.inssTaxId || '';
+  cInssTaxId.value = c.inssTaxId || '';
 }
 async function saveConfig(){
   const body = { sub:cSub.value.trim(), user:cUser.value, pass:cPass.value,
     endpoint:cEndpoint.value.trim()||'bills', costCenterEndpoint:cCC.value.trim()||'cost-centers',
     companyEndpoint:cComp.value.trim()||'companies', anthropicApiKey:cApiKey.value.trim(),
-    issTaxId:cIssTaxId.value.trim(), inssTaxId:cInssTaxId.value.trim() };
+    inssTaxId:cInssTaxId.value.trim() };
   currentConfig = body;
   await fetch('/api/config', {method:'POST', body: JSON.stringify(body)});
   showMsg('cfgMsg','ok','Configuração salva neste computador.');
@@ -947,9 +962,11 @@ async function enviarAnexo(billId, description, file){
   return { ok: r.status >= 200 && r.status < 300, status: r.status, data };
 }
 
-// Códigos de imposto confirmados via consulta ao título 295957 do Sienge —
-// fixos aqui, não precisam ser preenchidos na Configuração.
+// Códigos de imposto já confirmados — fixos aqui, não precisam ser
+// preenchidos na Configuração. IRRF e PIS/COFINS/CSLL confirmados via
+// consulta ao título 295957 do Sienge; ISS confirmado depois.
 const FIXED_TAX_IDS = {
+  issTaxId: 'ISS',
   irrfTaxId: 'IR',
   pisCofinsCsllTaxId: 'PIS/CSLL'
 };
@@ -966,13 +983,19 @@ function buildTaxes(){
       taxes.push({ _missingConfig: label }); // marcador pra avisar na hora de enviar
       return;
     }
-    if(!ibge){
+    // Código IBGE do município só é obrigatório pro ISS (é um imposto
+    // municipal, o Sienge precisa saber de qual cidade pra calcular certo).
+    // IRRF, INSS e PIS/COFINS/CSLL são impostos federais e não dependem
+    // disso — antes o programa travava o lançamento de QUALQUER imposto
+    // sem o IBGE preenchido, mesmo quando não fazia sentido pro imposto em
+    // questão.
+    if(taxIdConfig === 'issTaxId' && !ibge){
       taxes.push({ _missingConfig: label + ' (falta o código IBGE do município)' });
       return;
     }
     taxes.push({
       taxId: taxId,
-      ibgeCityId: ibge,
+      ...(ibge ? { ibgeCityId: ibge } : {}),
       rate: aliquotaCampo.value.trim() ? Number(aliquotaCampo.value.trim()) : 0,
       amount: Number(valor),
       taxableBaseAmount: baseCalculo ? Number(baseCalculo) : Number(valor),
