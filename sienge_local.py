@@ -349,13 +349,13 @@ EXTRACTION_PROMPT = """Você é um extrator de dados de documentos fiscais e bol
  "fornecedor_cnpj": string ou null (apenas números),
  "pagador_nome": string ou null (o "Tomador"/"Pagador"/"Sacado" — quem contratou o serviço ou vai pagar, NÃO o fornecedor),
  "pagador_cnpj": string ou null (CNPJ do pagador/tomador, apenas números),
- "numero_documento": string ou null (o número real do documento, não um código interno de controle — em NF-e/NFS-e é o "Número da Nota"/"Número da NFS-e" que aparece no topo do documento; NÃO use o "Número do RPS" (número provisório que a prefeitura substitui pelo número definitivo da NFS-e) nem a "Chave de acesso" (sequência longa de 44 dígitos). Em boletos, use o "Número do documento" (às vezes "Nº Documento" ou "Seu Número" — o mesmo número da nota/fatura que originou o boleto); NÃO use o "Nosso Número" (código de controle interno do banco/cedente, não é o número da nota). Em faturas, use o número da fatura.),
+ "numero_documento": string ou null (o número real do documento, não um código de controle interno. NF-e/NFS-e: "Número da Nota"/"Número da NFS-e" — NÃO o "RPS" nem a "Chave de acesso" de 44 dígitos. Boletos: "Número do documento"/"Seu Número" quando existir separado do "Nosso Número"; senão, use o "Nosso Número". Faturas: número da fatura.),
  "tipo_documento": string ou null (ex: "NFS-e", "NF-e", "Fatura", "Boleto"),
  "data_emissao": string "YYYY-MM-DD" ou null,
  "data_vencimento": string "YYYY-MM-DD" ou null,
  "valor_total": number ou null,
  "descricao": string curta (até 140 caracteres) resumindo o produto/serviço, ou null,
- "linha_digitavel": string ou null (SOMENTE para boletos bancários — a linha digitável tem SEMPRE exatamente 47 dígitos, em 5 blocos separados por espaço, no formato "AAAAA.AAAAA BBBBB.BBBBBB CCCCC.CCCCCC D EEEEEEEEEEEEEE" (10+11+11+1+14 dígitos), tipo "74891.12610 00363.908096 18400.971059 7 15550000020000". Pegue SOMENTE esses 5 blocos, mantendo os espaços e pontos exatamente como aparecem. NÃO inclua o código do banco (um número curto, tipo "237-9" ou "341-7", que aparece separado — geralmente numa caixinha à esquerda ou acima da linha digitável, perto do nome/logo do banco) nem qualquer outro número ou texto antes ou depois dos 5 blocos. Para notas fiscais e faturas sem boleto, deixe null.),
+ "linha_digitavel": string ou null (SOMENTE para boletos — sempre 47 dígitos em 5 blocos: "AAAAA.AAAAA BBBBB.BBBBBB CCCCC.CCCCCC D EEEEEEEEEEEEEE", tipo "74891.12610 00363.908096 18400.971059 7 15550000020000". Só esses 5 blocos — NÃO inclua o código do banco (ex: "237-9") que aparece do lado. Null pra notas/faturas sem boleto.),
  "iss_valor": number ou null (valor do ISSQN — some da nota mesmo se não for retido, costuma vir como "Vl. ISSQN" ou "Valor do ISS"),
  "iss_aliquota": number ou null (percentual do ISS, ex: 4.25 — costuma vir como "Alíquota"),
  "iss_retido": boolean (true se a nota indicar "Retido"/"Retenção" pro ISS, false se disser "Não Retido" ou não mencionar retenção),
@@ -680,7 +680,6 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <button class="navitem active" id="nav-extrair" onclick="showView('extrair')">Nota → Sienge</button>
       <div class="navgroup-label">Cadastros</div>
       <button class="navitem" id="nav-credores" onclick="showView('credores')">Credores</button>
-      <button class="navitem" id="nav-pagadores" onclick="showView('pagadores')">Pagadores</button>
       <div class="navgroup-label">Ferramentas</div>
       <button class="navitem" id="nav-historico" onclick="showView('historico')">Histórico</button>
       <button class="navitem" id="nav-anexo" onclick="showView('anexo')">Anexar avulso</button>
@@ -783,14 +782,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
     <section class="view" id="view-credores" style="display:none;">
       <h2>Credores memorizados</h2>
-      <p class="sub">Relação entre o CNPJ do fornecedor e o credor correspondente no Sienge.</p>
+      <p class="sub">Relação entre o CNPJ do fornecedor e o credor correspondente no Sienge, junto com o centro de custo, plano financeiro, unidade construtiva e item do orçamento usados da última vez pra esse credor.</p>
       <div class="panel"><div id="credList"></div></div>
-    </section>
-
-    <section class="view" id="view-pagadores" style="display:none;">
-      <h2>Pagadores memorizados</h2>
-      <p class="sub">Centro de custo, plano financeiro, unidade construtiva e item do orçamento dependem de quem está sendo pago (o Tomador da nota), não do fornecedor — já que o mesmo fornecedor pode atender obras diferentes.</p>
-      <div class="panel"><div id="pagadorList"></div></div>
     </section>
 
     <section class="view" id="view-historico" style="display:none;">
@@ -890,44 +883,30 @@ async function learn(cnpj, creditorId, name){
   const prev = map[cnpj] || {};
   map[cnpj] = {
     creditorId: String(creditorId),
-    name: name || prev.name || ''
-  };
-  await fetch('/api/creditor-map', { method:'POST', body: JSON.stringify(map) });
-  renderCredList();
-}
-
-async function learnPagador(cnpjPagador, nomePagador){
-  if(!cnpjPagador) return;
-  const r = await fetch('/api/pagador-map'); const map = await r.json();
-  const prev = map[cnpjPagador] || {};
-  map[cnpjPagador] = {
-    nome: nomePagador || prev.nome || '',
+    name: name || prev.name || '',
+    // Apropriação memorizada por credor: da próxima vez que a IA reconhecer
+    // esse mesmo credor (pelo CNPJ do fornecedor), usa esses padrões de
+    // novo. Só sobrescreve um campo se ele estiver preenchido agora —
+    // assim não apaga o que já tava memorizado quando essa função roda
+    // no meio da extração (campos ainda vazios).
     costCenterId: xCostCenter.value.trim() || prev.costCenterId || '',
     paymentCategoriesId: xPaymentCat.value.trim() || prev.paymentCategoriesId || '',
     buildingUnitId: xBuildingUnit.value.trim() || prev.buildingUnitId || '',
     costEstimationSheetId: xCostEstimationSheet.value.trim() || prev.costEstimationSheetId || ''
   };
-  await fetch('/api/pagador-map', { method:'POST', body: JSON.stringify(map) });
-  renderPagadorList();
+  await fetch('/api/creditor-map', { method:'POST', body: JSON.stringify(map) });
   renderCredList();
 }
+
 async function renderCredList(){
   const r = await fetch('/api/creditor-map'); const map = await r.json();
   const entries = Object.entries(map);
   document.getElementById('credList').innerHTML = entries.length
-    ? entries.map(([cnpj,v]) => `<div class="row"><span>${escapeHtml(cnpj)}</span><span>${escapeHtml(v.name||'')}</span><span class="id">ID ${escapeHtml(v.creditorId)}</span></div>`).join('')
-    : '<p>Nenhum credor memorizado ainda.</p>';
-}
-
-async function renderPagadorList(){
-  const r = await fetch('/api/pagador-map'); const map = await r.json();
-  const entries = Object.entries(map);
-  document.getElementById('pagadorList').innerHTML = entries.length
     ? entries.map(([cnpj,v]) => `<div class="row" style="flex-direction:column;align-items:flex-start;">
-        <span><b>${escapeHtml(v.nome||'')}</b> — ${escapeHtml(cnpj)}</span>
+        <span><b>${escapeHtml(v.name||'')}</b> — ${escapeHtml(cnpj)} <span class="id">ID ${escapeHtml(v.creditorId)}</span></span>
         <span class="id">CC ${escapeHtml(v.costCenterId||'—')} · plano ${escapeHtml(v.paymentCategoriesId||'—')} · unidade ${escapeHtml(v.buildingUnitId||'—')} · item orç. ${escapeHtml(v.costEstimationSheetId||'—')}</span>
       </div>`).join('')
-    : '<p>Nenhum pagador memorizado ainda.</p>';
+    : '<p>Nenhum credor memorizado ainda.</p>';
 }
 
 async function renderHistoryList(){
@@ -1107,16 +1086,15 @@ async function enviarTitulo(){
     return;
   }
 
-  // Deu certo — memoriza o credor pelo CNPJ do fornecedor, e a apropriação
-  // (centro de custo, plano financeiro, obra) pelo CNPJ do pagador.
+  // Deu certo — memoriza o credor pelo CNPJ do fornecedor, junto com a
+  // apropriação usada (centro de custo, plano financeiro, obra, item do
+  // orçamento). Da próxima vez que a IA reconhecer esse credor, usa os
+  // mesmos padrões de novo.
   const cnpjLimpo = xCnpj.value.replace(/\D/g,'');
   if(cnpjLimpo && xCreditorId.value){
     await learn(cnpjLimpo, xCreditorId.value, xNome.value.trim());
   }
   const pagadorCnpjLimpo = xPagadorCnpj.value.replace(/\D/g,'');
-  if(pagadorCnpjLimpo){
-    await learnPagador(pagadorCnpjLimpo, xPagadorNome.value.trim());
-  }
 
   // Guarda no histórico geral, pra poder sugerir em notas parecidas de
   // outros fornecedores/pagadores no futuro.
@@ -1354,41 +1332,40 @@ async function extrairPdf(fileOverride){
     document.getElementById('extrairFields').style.display = 'block';
     showMsg('extrairMsg','ok','Extraído! Confira os campos abaixo e clique em enviar quando estiver tudo certo.');
 
-    // Credor (quem recebe o pagamento) — memorizado pelo CNPJ do fornecedor
+    // Credor (quem recebe o pagamento) e apropriação (centro de custo, plano
+    // financeiro, obra, item do orçamento) — memorizados juntos pelo CNPJ do
+    // fornecedor. Quando a IA reconhece o credor, usa os mesmos padrões
+    // usados da última vez pra esse credor.
+    const cnpjFornecedorLimpo = (data.fornecedor_cnpj||'').replace(/\D/g,'');
     const cr = await fetch('/api/creditor-map'); const map = await cr.json();
-    const known = map[(data.fornecedor_cnpj||'').replace(/\D/g,'')];
+    const known = map[cnpjFornecedorLimpo];
     if(known){
       xCreditorId.value = known.creditorId || '';
       showMsg('xCredMsg','ok','Credor já memorizado: ' + (known.name||'') + ' (ID ' + known.creditorId + ')');
-    } else if(data.fornecedor_cnpj){
-      await buscarCredorExtracao();
-    }
-
-    // Apropriação (centro de custo, plano financeiro, obra) — memorizada pelo
-    // CNPJ do PAGADOR, não do fornecedor, já que o mesmo fornecedor pode
-    // atender obras/empresas diferentes.
-    const pagadorCnpjLimpo = (data.pagador_cnpj||'').replace(/\D/g,'');
-    const pr = await fetch('/api/pagador-map'); const pagadorMap = await pr.json();
-    const knownPagador = pagadorMap[pagadorCnpjLimpo];
-    if(knownPagador){
-      if(knownPagador.costCenterId) xCostCenter.value = knownPagador.costCenterId;
-      if(knownPagador.paymentCategoriesId) xPaymentCat.value = knownPagador.paymentCategoriesId;
-      if(knownPagador.buildingUnitId) xBuildingUnit.value = knownPagador.buildingUnitId;
-      if(knownPagador.costEstimationSheetId) xCostEstimationSheet.value = knownPagador.costEstimationSheetId;
-      showMsg('xPagadorMsg','ok','Apropriação já memorizada pra "' + (knownPagador.nome||data.pagador_nome||'') + '" — centro de custo ' + (knownPagador.costCenterId||'—') + '.');
-    } else if(data.descricao){
-      // Pagador novo — procura lançamentos anteriores com descrição
-      // parecida (mesmo de outros pagadores) e sugere, deixando claro que
-      // é sugestão pra revisar, não aplicação automática.
-      const sr = await fetch('/api/similar-history', { method:'POST', body: JSON.stringify({ descricao: data.descricao, excludeCnpj: pagadorCnpjLimpo }) });
-      const similares = await sr.json();
-      if(similares && similares.length){
-        const s = similares[0];
-        if(s.costCenterId) xCostCenter.value = s.costCenterId;
-        if(s.paymentCategoriesId) xPaymentCat.value = s.paymentCategoriesId;
-        if(s.buildingUnitId) xBuildingUnit.value = s.buildingUnitId;
-        if(s.costEstimationSheetId) xCostEstimationSheet.value = s.costEstimationSheetId;
-        showMsg('xPagadorMsg','info','Sugestão baseada em lançamento parecido (centro de custo ' + (s.costCenterId||'—') + ') — confira antes de enviar.');
+      if(known.costCenterId) xCostCenter.value = known.costCenterId;
+      if(known.paymentCategoriesId) xPaymentCat.value = known.paymentCategoriesId;
+      if(known.buildingUnitId) xBuildingUnit.value = known.buildingUnitId;
+      if(known.costEstimationSheetId) xCostEstimationSheet.value = known.costEstimationSheetId;
+      if(known.costCenterId){
+        showMsg('xPagadorMsg','ok','Apropriação já memorizada pra esse credor — centro de custo ' + known.costCenterId + '.');
+      }
+      atualizarEmpresaCalculada();
+    } else {
+      if(data.fornecedor_cnpj) await buscarCredorExtracao();
+      if(data.descricao){
+        // Credor novo — procura lançamentos anteriores com descrição
+        // parecida (de outros credores) e sugere, deixando claro que é
+        // sugestão pra revisar, não aplicação automática.
+        const sr = await fetch('/api/similar-history', { method:'POST', body: JSON.stringify({ descricao: data.descricao, excludeCnpj: cnpjFornecedorLimpo }) });
+        const similares = await sr.json();
+        if(similares && similares.length){
+          const s = similares[0];
+          if(s.costCenterId) xCostCenter.value = s.costCenterId;
+          if(s.paymentCategoriesId) xPaymentCat.value = s.paymentCategoriesId;
+          if(s.buildingUnitId) xBuildingUnit.value = s.buildingUnitId;
+          if(s.costEstimationSheetId) xCostEstimationSheet.value = s.costEstimationSheetId;
+          showMsg('xPagadorMsg','info','Sugestão baseada em lançamento parecido (centro de custo ' + (s.costCenterId||'—') + ') — confira antes de enviar.');
+        }
       }
     }
 
@@ -1492,7 +1469,6 @@ async function userAction(action, username){
 
 loadConfig();
 renderCredList();
-renderPagadorList();
 renderHistoryList();
 checkMe();
 </script>
