@@ -715,6 +715,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <div class="field"><label>Data de vencimento</label><input id="xVencimento" placeholder="YYYY-MM-DD"></div>
           <div class="field"><label>Valor total</label><input id="xValor"></div>
           <div class="field" style="grid-column:1/-1;"><label>Descrição</label><input id="xDescricao"></div>
+          <div class="field" style="grid-column:1/-1;"><label>Nome do anexo no Sienge (opcional — deixe em branco pra usar o nome do próprio arquivo)</label><input id="xAnexoNome" placeholder="ex: NFS-e 1060 + boleto"></div>
           <div class="field" style="grid-column:1/-1;">
             <label>Anexo a enviar pro Sienge (opcional — se vazio, usa o mesmo PDF extraído acima)</label>
             <input id="xAttachFile" type="file" accept="application/pdf">
@@ -1067,8 +1068,10 @@ async function enviarTitulo(){
     filesToSend.push({ file: attachFile, label: 'anexo adicional' });
   }
   const linhaDigitavel = xLinhaDigitavel.value.trim();
-  const description = xDescricao.value.trim() ||
-    (body.documentNumber ? ('Documento ' + body.documentNumber) : 'Nota/boleto');
+  // Nome do anexo no Sienge: só usa o que foi digitado em "Nome do anexo" se
+  // a pessoa realmente preencher esse campo. Sem preencher, usa o nome do
+  // próprio arquivo — sem inventar descrição nenhuma.
+  const anexoNome = xAnexoNome.value.trim();
 
   showMsg('envioMsg','info','Enviando título...');
   const r = await fetch('/api/config'); const c = await r.json();
@@ -1116,8 +1119,14 @@ async function enviarTitulo(){
   if(filesToSend.length){
     for(const item of filesToSend){
       showMsg('envioMsg','info','Título criado (ID ' + billId + ')! Anexando ' + item.label + '...');
+      // Sem nome customizado, usa o nome do arquivo puro e simples. Com nome
+      // customizado e mais de um arquivo, acrescenta qual é qual (senão os
+      // dois anexos ficariam com o mesmo nome no Sienge).
+      const nomeAnexo = anexoNome
+        ? (filesToSend.length > 1 ? anexoNome + ' (' + item.label + ')' : anexoNome)
+        : item.file.name;
       try{
-        const anexo = await enviarAnexo(billId, description + ' (' + item.label + ')', item.file);
+        const anexo = await enviarAnexo(billId, nomeAnexo, item.file);
         if(anexo.ok){
           summary.push('Anexado: ' + item.file.name + '.');
         } else {
@@ -1280,6 +1289,7 @@ async function extrairPdf(fileOverride){
   document.getElementById('payload').style.display = 'none';
   document.getElementById('payload').value = '';
   document.getElementById('xAttachFile').value = '';
+  xAnexoNome.value = '';
   mostrarAba('dados');
   document.getElementById('xAttachMsg').innerHTML = '';
   try{
