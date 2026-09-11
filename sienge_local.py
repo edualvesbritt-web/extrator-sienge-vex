@@ -1340,6 +1340,16 @@ async function extrairPdf(fileOverride){
     xPisCofinsCsllAliquota.value = data.pis_cofins_csll_aliquota ?? '';
     xMunicipioIbge.value = data.municipio_ibge || '';
     xBaseCalculo.value = data.base_calculo ?? data.valor_total ?? '';
+    // Quando a nota tem imposto (retenção de ISS/IRRF/INSS/PIS-COFINS-CSLL),
+    // o valor do título tem que ser o valor BRUTO da nota (a base de cálculo),
+    // não o "valor_total" extraído — que em alguns documentos vem como o
+    // valor líquido já descontado dos impostos. Sem essa correção o título
+    // seria criado com um valor menor do que o real.
+    const temImposto = [data.iss_valor, data.irrf_valor, data.inss_valor, data.pis_cofins_csll_valor]
+      .some(v => v !== null && v !== undefined && v !== '');
+    if(temImposto && xBaseCalculo.value !== ''){
+      xValor.value = xBaseCalculo.value;
+    }
     extractedCache.cnpj = data.fornecedor_cnpj || '';
     document.getElementById('extrairFields').style.display = 'block';
     showMsg('extrairMsg','ok','Extraído! Confira os campos abaixo e clique em enviar quando estiver tudo certo.');
